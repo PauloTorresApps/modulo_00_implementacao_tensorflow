@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classificador de Processos - Promotoria IA</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a237e, #283593);
+            color: white;
+            padding: 24px 32px;
+            text-align: center;
+        }
+        .header h1 { font-size: 1.6rem; font-weight: 600; }
+        .header p { font-size: 0.9rem; opacity: 0.8; margin-top: 4px; }
+        .container {
+            max-width: 800px;
+            margin: 32px auto;
+            padding: 0 16px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .card h2 {
+            font-size: 1.1rem;
+            color: #1a237e;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e8eaf6;
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #555;
+            margin-bottom: 6px;
+        }
+        .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            background: white;
+            transition: border-color 0.2s;
+            appearance: auto;
+        }
+        .form-group select:focus {
+            outline: none;
+            border-color: #3f51b5;
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #1a237e, #3f51b5);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-top: 8px;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .resultado-item {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid;
+            background: #fafafa;
+        }
+        .resultado-item:nth-child(1) { border-color: #4caf50; background: #e8f5e9; }
+        .resultado-item:nth-child(2) { border-color: #2196f3; background: #e3f2fd; }
+        .resultado-item:nth-child(3) { border-color: #ff9800; background: #fff3e0; }
+        .resultado-item:nth-child(4) { border-color: #9e9e9e; }
+        .resultado-item:nth-child(5) { border-color: #9e9e9e; }
+        .posicao {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1a237e;
+            min-width: 40px;
+            text-align: center;
+        }
+        .info { flex: 1; margin-left: 14px; }
+        .info .nome { font-weight: 600; font-size: 0.95rem; }
+        .info .id-label { font-size: 0.8rem; color: #888; margin-top: 2px; }
+        .confianca {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1a237e;
+            min-width: 70px;
+            text-align: right;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+        }
+        .erro {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        #resultados { display: none; }
+        .aviso-central {
+            display: none;
+            background: #fff3e0;
+            border: 2px solid #ff9800;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .aviso-central .aviso-icone { font-size: 2rem; margin-bottom: 8px; }
+        .aviso-central .aviso-titulo {
+            font-weight: 700;
+            font-size: 1rem;
+            color: #e65100;
+            margin-bottom: 6px;
+        }
+        .aviso-central .aviso-texto {
+            font-size: 0.9rem;
+            color: #bf360c;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Classificador de Processos</h1>
+        <p>Inteligencia Artificial para Distribuicao de Promotorias</p>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h2>Dados do Processo</h2>
+            <form id="formClassificar">
+                <div class="form-group">
+                    <label for="cod_competencia">Competencia</label>
+                    <select id="cod_competencia" required>
+                        <option value="">Carregando...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="id_assunto_principal">Assunto Principal</label>
+                    <select id="id_assunto_principal" required>
+                        <option value="">Carregando...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="id_localidade_judicial">Localidade Judicial</label>
+                    <select id="id_localidade_judicial" required>
+                        <option value="">Carregando...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="id_orgao_juizo">Orgao / Juizo</label>
+                    <select id="id_orgao_juizo" required>
+                        <option value="">Carregando...</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn" id="btnClassificar" disabled>Classificar Processo</button>
+            </form>
+        </div>
+
+        <div class="aviso-central" id="avisoCentral">
+            <div class="aviso-icone">&#9888;</div>
+            <div class="aviso-titulo">Encaminhamento para a Central</div>
+            <div class="aviso-texto">
+                A confianca da classificacao ficou abaixo de 75%.<br>
+                Este processo deve ser encaminhado para a <strong>Central de Distribuicao</strong>
+                para que um analista avalie e atribua a promotoria correta.
+            </div>
+        </div>
+
+        <div class="card" id="resultados">
+            <h2>Resultado da Classificacao</h2>
+            <div id="listaResultados"></div>
+        </div>
+    </div>
+
+    <script>
+        const campos = ['cod_competencia', 'id_assunto_principal', 'id_localidade_judicial', 'id_orgao_juizo'];
+
+        // Carrega opções dos dropdowns
+        async function carregarOpcoes() {
+            try {
+                const res = await fetch('/api/opcoes');
+                const opcoes = await res.json();
+
+                campos.forEach(campo => {
+                    const select = document.getElementById(campo);
+                    select.innerHTML = '<option value="">Selecione...</option>';
+                    opcoes[campo].forEach(valor => {
+                        const opt = document.createElement('option');
+                        opt.value = valor;
+                        opt.textContent = valor;
+                        select.appendChild(opt);
+                    });
+                });
+
+                document.getElementById('btnClassificar').disabled = false;
+            } catch (err) {
+                console.error('Erro ao carregar opções:', err);
+            }
+        }
+
+        // Classifica o processo
+        document.getElementById('formClassificar').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const btn = document.getElementById('btnClassificar');
+            btn.disabled = true;
+            btn.textContent = 'Classificando...';
+
+            const dados = {};
+            campos.forEach(campo => {
+                dados[campo] = document.getElementById(campo).value;
+            });
+
+            try {
+                const res = await fetch('/api/classificar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dados)
+                });
+
+                const data = await res.json();
+
+                const avisoCentral = document.getElementById('avisoCentral');
+                avisoCentral.style.display = 'none';
+
+                if (data.erro) {
+                    document.getElementById('listaResultados').innerHTML =
+                        `<div class="erro">${data.erro}</div>`;
+                } else {
+                    // Verifica se a maior confiança é menor que 75%
+                    const maiorConfianca = parseFloat(data.resultados[0].confianca);
+                    if (maiorConfianca < 75) {
+                        avisoCentral.style.display = 'block';
+                    }
+
+                    document.getElementById('listaResultados').innerHTML =
+                        data.resultados.map(r => `
+                            <div class="resultado-item">
+                                <div class="posicao">${r.posicao}°</div>
+                                <div class="info">
+                                    <div class="nome">${r.nome}</div>
+                                    <div class="id-label">ID: ${r.id_promotoria}</div>
+                                </div>
+                                <div class="confianca">${r.confianca}</div>
+                            </div>
+                        `).join('');
+                }
+
+                document.getElementById('resultados').style.display = 'block';
+            } catch (err) {
+                document.getElementById('listaResultados').innerHTML =
+                    `<div class="erro">Erro ao conectar com o servidor.</div>`;
+                document.getElementById('resultados').style.display = 'block';
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Classificar Processo';
+        });
+
+        carregarOpcoes();
+    </script>
+</body>
+</html>

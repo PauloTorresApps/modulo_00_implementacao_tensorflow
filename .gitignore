@@ -1,0 +1,4 @@
+node_modules/
+.claude/
+modelo_promotoria/
+treinamento_ia_onehot.csv
