@@ -239,13 +239,13 @@ Isso significa que, com as 4 features disponiveis, **nenhum modelo pode ultrapas
 
 **Exemplo concreto:** A combinacao `cod_competencia=9, assunto=10949, localidade=2729, orgao=270000525` aparece 1.842 vezes no dataset, distribuida entre **29 promotorias diferentes** — sendo 41.8% para a promotoria 168 e 37.9% para a promotoria 89.
 
-**Por que o 4o dataset (50k) obteve resultado superior?** O 4o dataset continha apenas promotorias com ID ate 102 (menos de 2/3 das classes) devido a truncamento na extracao, o que reduzia drasticamente o numero de conflitos entre promotorias. Os datasets 1 a 3, embora completos, tinham menos amostras — ainda assim, apresentaram resultados coerentes com o teto teorico quando ajustado pelo numero de classes presentes.
+**Por que o 4o dataset (50k) obteve resultado superior?** O 4o dataset continha apenas promotorias com ID ate 102 (menos de 2/3 das classes) devido a truncamento na extracao, o que reduzia drasticamente o numero de conflitos entre promotorias.
 
-**Nota:** A queda de acuracia entre o 3o dataset (86.37%) e o 5o dataset (77.77%) reflete o aumento natural de complexidade quando o volume de dados e suficiente para representar plenamente os conflitos de atribuicao entre as 169 promotorias.
+**Por que os datasets 1 a 3 (completos) tambem tiveram acuracia alta?** Com menos amostras (10k a 30k registros), os conflitos de atribuicao entre promotorias estavam sub-representados nos dados. Quanto menor o volume, menor a chance de capturar a variabilidade natural da distribuicao (rodizio, carga de trabalho, etc.), resultando em um teto teorico mais alto e, consequentemente, acuracia superior. O 5o dataset (98k), com volume suficiente para representar plenamente esses conflitos, revela o desempenho real do modelo.
 
 **Validacao cruzada:** O mesmo diagnostico foi executado em um dataset ainda maior (143.087 registros), que apresentou teto teorico de 80.67% — confirmando que o limite e uma caracteristica estrutural dos dados, nao do volume.
 
-### 6.6 Convergencia
+### 6.5 Convergencia
 
 O treinamento final convergiu na epoca 117, com early stopping ativado apos 25 epocas sem melhoria na validacao. O learning rate ao final do treinamento era de ~0.0001.
 
