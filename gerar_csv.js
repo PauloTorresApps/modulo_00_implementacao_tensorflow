@@ -1,7 +1,7 @@
 import fs from 'fs';
 import readline from 'readline';
 
-const INPUT_FILE = 'treinamento_ia_202602240943.csv';
+const INPUT_FILE = 'treinamento_ia-2026-02-23_30k.csv';
 const OUTPUT_FILE = 'treinamento_ia_onehot.csv';
 
 // --- PASSO 1: Primeira leitura — descobrir valores únicos ---
