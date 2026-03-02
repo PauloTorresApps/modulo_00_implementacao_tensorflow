@@ -224,6 +224,7 @@ async function run() {
     await model.fit(xsTrain, ysTrain, {
         epochs: 200,
         batchSize: 32,
+        shuffle: true,
         validationData: [xsVal, ysValOneHot],
         classWeight,
         callbacks: {
