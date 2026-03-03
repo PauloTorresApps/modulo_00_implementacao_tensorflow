@@ -368,6 +368,7 @@ O script `populate-chromadb.js` processa o dataset de treinamento em batches de 
 | Servidor Web | Express.js | 5.2.1 |
 | Parsing CSV | csv-parse | 6.1.0 |
 | Frontend | HTML/CSS/JavaScript | Vanilla |
+| Admin UI | ChromaDB Admin (Next.js) | - |
 | Containerizacao | Docker + Docker Compose | - |
 
 ---
@@ -376,7 +377,7 @@ O script `populate-chromadb.js` processa o dataset de treinamento em batches de 
 
 ### 10.1 Visao Geral
 
-O sistema utiliza **Docker Compose** para orquestrar dois containers em uma unica operacao:
+O sistema utiliza **Docker Compose** para orquestrar tres containers em uma unica operacao:
 
 ```text
 docker-compose.yml
@@ -385,9 +386,12 @@ docker-compose.yml
 │   ├── Modelo treinado (modelo_promotoria/)
 │   ├── Express.js (porta 3000)
 │   └── Cliente ChromaDB
-└── chromadb
-    ├── ChromaDB Server (porta 8000)
-    └── Volume persistente (chromadb_data)
+├── chromadb
+│   ├── ChromaDB Server (porta 8000)
+│   └── Volume persistente (chromadb_data)
+└── chromadb-admin
+    ├── Interface administrativa web (porta 3001)
+    └── Visualizacao de collections, embeddings e metadados
 ```
 
 ### 10.2 Dockerfile
@@ -404,8 +408,9 @@ A imagem base `node:22-slim` minimiza o tamanho do container mantendo compatibil
 O `docker-compose.yml` define:
 
 - **Dependencia com healthcheck:** O container `app` so inicia apos o ChromaDB responder ao endpoint `/api/v2/heartbeat`, garantindo que a conexao esteja disponivel na inicializacao
+- **Interface administrativa:** O container `chromadb-admin` disponibiliza uma interface web (porta 3001) para visualizar collections, inspecionar embeddings e metadados armazenados no ChromaDB
 - **Volume persistente:** Os dados do ChromaDB sao armazenados no volume `chromadb_data`, preservados entre reinicializacoes e atualizacoes dos containers
-- **Restart automatico:** Ambos os containers reiniciam automaticamente em caso de falha (`unless-stopped`)
+- **Restart automatico:** Todos os containers reiniciam automaticamente em caso de falha (`unless-stopped`)
 - **Variaveis de ambiente:** Host e porta do ChromaDB sao configurados via environment, permitindo flexibilidade na implantacao
 
 ### 10.4 Operacao
@@ -432,7 +437,8 @@ A portabilidade e garantida: qualquer maquina com Docker instalado pode executar
 - **Busca vetorial:** Integracao com ChromaDB permite localizar processos similares via embeddings aprendidos, fornecendo contexto adicional ao analista
 - **Rastreabilidade:** Todas as classificacoes sao registradas no ChromaDB com metadata completa, permitindo auditoria e analise de padroes de uso
 - **Resiliencia:** O sistema opera normalmente mesmo sem o ChromaDB, com degradacao graceful das funcionalidades vetoriais
-- **Portabilidade:** Containerizacao com Docker Compose permite implantar o sistema completo (app + ChromaDB) em qualquer maquina com um unico comando
+- **Portabilidade:** Containerizacao com Docker Compose permite implantar o sistema completo (app + ChromaDB + admin UI) em qualquer maquina com um unico comando
+- **Observabilidade:** Interface administrativa web (ChromaDB Admin) para visualizar e inspecionar collections, embeddings e metadados diretamente no navegador
 
 ### 11.2 Limitacoes
 
@@ -457,4 +463,4 @@ A analise diagnostica revelou que a sobreposicao natural de atribuicoes entre pr
 
 A integracao com o **ChromaDB** adiciona uma camada de armazenamento vetorial que complementa a classificacao: embeddings de 128 dimensoes extraidos da penultima camada da rede neural permitem busca por similaridade entre processos, registro completo do historico de classificacoes e recuperacao de processos de treinamento com caracteristicas proximas (RAG). Essas funcionalidades fornecem contexto adicional ao analista e estabelecem a base para monitoramento continuo e evolucao do sistema.
 
-A containerizacao com **Docker Compose** garante portabilidade e facilidade de implantacao: o sistema completo (aplicacao + banco vetorial) pode ser iniciado em qualquer ambiente com um unico comando, sem dependencias de instalacao local.
+A containerizacao com **Docker Compose** garante portabilidade e facilidade de implantacao: o sistema completo (aplicacao + banco vetorial + interface administrativa) pode ser iniciado em qualquer ambiente com um unico comando, sem dependencias de instalacao local.

@@ -4,10 +4,14 @@ services:
     container_name: classificador-promotorias
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - CHROMADB_HOST=chromadb
       - CHROMADB_PORT=8000
+    volumes:
+      - ./fontes_de_dados:/app/fontes_de_dados:ro
     depends_on:
       chromadb:
         condition: service_healthy
@@ -23,11 +27,22 @@ services:
     environment:
       - ANONYMIZED_TELEMETRY=false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
+      test: ["CMD", "bash", "-c", "echo -e 'GET /api/v2/heartbeat HTTP/1.0\r\nHost: localhost\r\n\r\n' > /dev/tcp/localhost/8000"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
+
+  chromadb-admin:
+    build:
+      context: https://github.com/flanker/chromadb-admin.git
+    container_name: chromadb-admin
+    ports:
+      - "3001:3001"
+    depends_on:
+      chromadb:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
