@@ -25,6 +25,8 @@ COPY modelo_promotoria/ ./modelo_promotoria/
 # Scripts auxiliares (treinamento e populacao - usados sob demanda)
 COPY train.js gerar_csv.js diagnostico.js populate-chromadb.js ./
 
+RUN mkdir -p /app/logs
+
 ENV NODE_ENV=production
 ENV CHROMADB_HOST=chromadb
 ENV CHROMADB_PORT=8000

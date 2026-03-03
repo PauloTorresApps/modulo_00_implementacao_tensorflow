@@ -155,6 +155,26 @@ Isso permite que o modelo faca ajustes grandes no inicio e refinamentos finos na
 
 O treinamento para automaticamente se a precisao de validacao nao melhorar por 25 epocas consecutivas. O melhor modelo (nao o ultimo) e salvo automaticamente.
 
+### 4.8 Penalizacao por Localidade Invalida
+
+**Problema:** O modelo original tratava as 169 promotorias como classes independentes, sem considerar que cada promotoria pertence a uma localidade judicial especifica. Isso fazia com que, em predicoes de menor confianca (Top-3 a Top-5), o modelo sugerisse promotorias de localidades diferentes da informada na entrada — algo impossivel no mundo real.
+
+**Solucao:** A funcao de perda foi modificada para incorporar uma penalizacao estrutural baseada na relacao promotoria-localidade:
+
+1. **Mapeamento automatico:** Na primeira passagem dos dados de treinamento, o sistema identifica quais localidades cada promotoria atende, construindo um mapeamento `promotoria → {localidades}`
+
+2. **Matriz de validade:** Uma matriz `[169 x 169]` e construida onde `validityMatrix[i][j] = 1` se as promotorias `i` e `j` compartilham pelo menos uma localidade. Promotorias sem dados de localidade sao tratadas como validas (nao penalizadas)
+
+3. **Loss com penalizacao:** A funcao de perda combina a cross-entropy padrao (com label smoothing) com um termo de penalidade:
+
+```text
+loss_total = cross_entropy + 5.0 * media(probabilidade_em_classes_invalidas)
+```
+
+Para cada amostra do batch, o modelo identifica a classe verdadeira, consulta a matriz de validade para obter quais promotorias sao validas para aquela localidade, e penaliza a probabilidade atribuida a promotorias invalidas.
+
+**Diferencial:** Diferentemente de um filtro pos-processamento (que apenas esconde os erros na inferencia), esta abordagem ensina o modelo durante o treinamento que cruzar localidades e proibido. O modelo aprende internamente a restricao, resultando em predicoes estruturalmente corretas.
+
 ---
 
 ## 5. Processo de Treinamento
@@ -181,7 +201,8 @@ Os dados sao embaralhados aleatoriamente (Fisher-Yates shuffle) antes da divisao
 | L2 regularization | 0.001 |
 | Dropout | 0.3 / 0.3 / 0.2 |
 | Early stopping patience | 25 epocas |
-| Loss function | Categorical Cross-Entropy (customizada com smoothing) |
+| Loss function | Categorical Cross-Entropy (customizada com smoothing + penalizacao por localidade) |
+| Penalizacao por localidade | Peso 5.0 sobre predicoes fora da localidade correta |
 
 ### 5.3 Otimizador Adam
 
@@ -290,6 +311,7 @@ Quando a maior probabilidade de classificacao e inferior a **75%**, o sistema ex
 | POST | `/api/classificar` | Classifica um processo, retorna Top-5 e processos similares |
 | POST | `/api/similares` | Busca N processos similares via embedding no ChromaDB |
 | GET | `/api/historico` | Retorna historico recente de classificacoes |
+| GET | `/api/training-metrics` | Retorna metricas do treinamento em andamento ou concluido |
 
 ---
 
@@ -426,9 +448,54 @@ A portabilidade e garantida: qualquer maquina com Docker instalado pode executar
 
 ---
 
-## 11. Consideracoes e Proximos Passos
+## 11. Dashboard de Treinamento (tfjs-vis)
 
-### 11.1 Pontos Fortes
+### 11.1 Visao Geral
+
+O sistema inclui um dashboard web para monitoramento em tempo real do treinamento da rede neural, acessivel em `http://localhost:3000/dashboard.html`. O dashboard utiliza a biblioteca **TensorFlow.js Visualization (tfjs-vis)** para renderizar graficos interativos diretamente no navegador.
+
+### 11.2 Arquitetura
+
+```text
+[train.js] → grava metricas → [logs/training_metrics.json] ← leitura ← [server.js /api/training-metrics]
+                                                                              ↑
+                                                                   [dashboard.html]
+                                                                   polling a cada 3s
+                                                                   renderiza com tfjs-vis
+```
+
+O desacoplamento via arquivo JSON permite que o treinamento (Node.js) e o dashboard (browser) operem de forma independente. O diretorio `logs/` e montado como volume Docker compartilhado, permitindo que o treinamento execute localmente enquanto o dashboard e servido pelo container.
+
+### 11.3 Metricas Visualizadas
+
+| Grafico | Descricao |
+|---|---|
+| Loss (Treino vs Validacao) | Evolucao da funcao de perda por epoca, com duas series para comparacao |
+| Accuracy (Treino vs Validacao) | Evolucao da acuracia percentual por epoca |
+| Learning Rate | Decaimento da taxa de aprendizado ao longo das epocas |
+
+### 11.4 Indicadores de Status
+
+O dashboard exibe em tempo real:
+
+- **Status do treinamento:** Preparando / Treinando / Concluido
+- **Epoca atual / total:** Progresso do treinamento
+- **Melhor acuracia de validacao:** Atualizada a cada melhoria
+- **Resultados Top-K:** Exibidos ao concluir o treinamento (Top-1, Top-3, Top-5)
+
+### 11.5 Gravacao de Metricas
+
+O script `train.js` grava metricas no arquivo `logs/training_metrics.json` em tres momentos:
+
+1. **Inicio:** Status `preparing` com timestamp e configuracao de epocas
+2. **A cada epoca:** Acumula loss, accuracy, val_loss, val_accuracy e learning rate
+3. **Ao concluir:** Status `completed` com resultados Top-K e timestamp de finalizacao
+
+---
+
+## 12. Consideracoes e Proximos Passos
+
+### 12.1 Pontos Fortes
 
 - **Top-5 de 96%:** Em quase todos os casos, a promotoria correta esta entre as 5 sugestoes
 - **Baixo overfitting:** Gap de apenas 0.4% entre treino e validacao
@@ -439,13 +506,15 @@ A portabilidade e garantida: qualquer maquina com Docker instalado pode executar
 - **Resiliencia:** O sistema opera normalmente mesmo sem o ChromaDB, com degradacao graceful das funcionalidades vetoriais
 - **Portabilidade:** Containerizacao com Docker Compose permite implantar o sistema completo (app + ChromaDB + admin UI) em qualquer maquina com um unico comando
 - **Observabilidade:** Interface administrativa web (ChromaDB Admin) para visualizar e inspecionar collections, embeddings e metadados diretamente no navegador
+- **Restricao por localidade:** A funcao de perda penaliza predicoes de promotorias fora da localidade correta, ensinando o modelo a respeitar restricoes geograficas durante o treinamento — nao apenas na inferencia
+- **Monitoramento de treinamento:** Dashboard web com tfjs-vis permite acompanhar loss, accuracy e learning rate em tempo real durante o treinamento
 
-### 11.2 Limitacoes
+### 12.2 Limitacoes
 
 - **Sobreposicao de atribuicoes:** Varias promotorias atendem os mesmos tipos de processo, e a distribuicao real depende de criterios nao presentes nos dados (rodizio, carga de trabalho). Isso impoe um teto teorico de ~81% com as 4 features atuais
 - **Features limitadas:** O modelo depende de apenas 4 features categoricas. Mais informacoes do processo (tipo, vara, texto do assunto) poderiam reduzir a ambiguidade e elevar a acuracia alem do teto atual
 
-### 11.3 Oportunidades de Melhoria
+### 12.3 Oportunidades de Melhoria
 
 1. **Features adicionais:** Incorporar informacoes como tipo de processo, vara de origem, ou texto do assunto — a principal alavanca para superar o teto atual de acuracia, reduzindo a ambiguidade entre promotorias com atribuicoes sobrepostas
 2. **Retreinamento periodico:** Atualizar o modelo com novos processos distribuidos para manter a precisao ao longo do tempo. Apos cada retreinamento, re-executar `populate-chromadb.js` para atualizar os embeddings armazenados
@@ -455,7 +524,7 @@ A portabilidade e garantida: qualquer maquina com Docker instalado pode executar
 
 ---
 
-## 12. Conclusao
+## 13. Conclusao
 
 O sistema desenvolvido demonstra viabilidade tecnica para automatizar a distribuicao de processos para promotorias de justica. Com **77.77% de acerto direto** (Top-1), **93.14% considerando as 3 primeiras sugestoes** (Top-3) e **95.84% considerando as 5 primeiras** (Top-5), o modelo oferece ganho significativo de eficiencia, mantendo a seguranca de encaminhar casos incertos para avaliacao humana.
 

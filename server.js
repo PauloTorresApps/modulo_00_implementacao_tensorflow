@@ -96,6 +96,20 @@ app.get('/api/opcoes', (req, res) => {
     res.json(options);
 });
 
+// Métricas de treinamento para o dashboard
+app.get('/api/training-metrics', (req, res) => {
+    const metricsPath = path.join(__dirname, 'logs', 'training_metrics.json');
+    if (!fs.existsSync(metricsPath)) {
+        return res.json({ status: 'idle' });
+    }
+    try {
+        const data = JSON.parse(fs.readFileSync(metricsPath, 'utf-8'));
+        res.json(data);
+    } catch {
+        res.json({ status: 'idle' });
+    }
+});
+
 // Classifica um processo
 app.post('/api/classificar', async (req, res) => {
     const { cod_competencia, id_assunto_principal, id_localidade_judicial, id_orgao_juizo } = req.body;

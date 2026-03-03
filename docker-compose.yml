@@ -12,6 +12,7 @@ services:
       - CHROMADB_PORT=8000
     volumes:
       - ./fontes_de_dados:/app/fontes_de_dados:ro
+      - ./logs:/app/logs
     depends_on:
       chromadb:
         condition: service_healthy

@@ -1,0 +1,2 @@
+
+No início do @RELATORIO_TECNICO.md , ensine o usuário a iniciar a aplicaçao, gerar o arquivo dos dados normalizados, treinar o modelo, acompnhar o treinamento em tempo real, verificar os dados no ChromaDB e utilizar a interface para verificar, de acordo com as infromaçeos do processo, a qual promotoria ele pertence.

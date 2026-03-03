@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Treinamento - tfjs-vis</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.5.1/dist/tfjs-vis.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a237e, #283593);
+            color: white;
+            padding: 24px 32px;
+            text-align: center;
+        }
+        .header h1 { font-size: 1.6rem; font-weight: 600; }
+        .header p { font-size: 0.9rem; opacity: 0.8; margin-top: 4px; }
+        .container {
+            max-width: 1100px;
+            margin: 32px auto;
+            padding: 0 16px;
+        }
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 18px 28px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.idle { background: #9e9e9e; }
+        .status-dot.preparing { background: #ff9800; animation: pulse 1.5s infinite; }
+        .status-dot.training { background: #4caf50; animation: pulse 1.5s infinite; }
+        .status-dot.completed { background: #2196f3; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .stat {
+            font-size: 0.9rem;
+            color: #555;
+        }
+        .stat strong { color: #1a237e; }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 20px;
+        }
+        .chart-card h3 {
+            font-size: 1rem;
+            color: #1a237e;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e8eaf6;
+        }
+        .chart-container {
+            height: 280px;
+        }
+        .topk-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 28px;
+            margin-bottom: 24px;
+            display: none;
+        }
+        .topk-card h3 {
+            font-size: 1.1rem;
+            color: #1a237e;
+            margin-bottom: 16px;
+        }
+        .topk-results {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+        }
+        .topk-item {
+            text-align: center;
+            padding: 16px 32px;
+            border-radius: 10px;
+            background: #e8eaf6;
+        }
+        .topk-item .label { font-size: 0.85rem; color: #555; margin-bottom: 4px; }
+        .topk-item .value { font-size: 1.8rem; font-weight: 700; color: #1a237e; }
+        .chart-card.full-width {
+            grid-column: 1 / -1;
+        }
+        @media (max-width: 768px) {
+            .charts-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Dashboard de Treinamento</h1>
+        <p>Monitoramento em tempo real com TensorFlow.js Visualization</p>
+    </div>
+
+    <div class="container">
+        <div class="status-bar" id="statusBar">
+            <div class="status-indicator">
+                <span class="status-dot idle" id="statusDot"></span>
+                <span id="statusText">Aguardando...</span>
+            </div>
+            <div class="stat">Epoca: <strong id="epochInfo">-</strong></div>
+            <div class="stat">Melhor Val Acc: <strong id="bestValAcc">-</strong></div>
+            <div class="stat">Inicio: <strong id="startTime">-</strong></div>
+        </div>
+
+        <div class="topk-card" id="topkCard">
+            <h3>Resultado Final - Top-K Accuracy</h3>
+            <div class="topk-results">
+                <div class="topk-item">
+                    <div class="label">Top-1</div>
+                    <div class="value" id="topk1">-</div>
+                </div>
+                <div class="topk-item">
+                    <div class="label">Top-3</div>
+                    <div class="value" id="topk3">-</div>
+                </div>
+                <div class="topk-item">
+                    <div class="label">Top-5</div>
+                    <div class="value" id="topk5">-</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Loss (Treino vs Validacao)</h3>
+                <div class="chart-container" id="lossChart"></div>
+            </div>
+            <div class="chart-card">
+                <h3>Accuracy (Treino vs Validacao)</h3>
+                <div class="chart-container" id="accChart"></div>
+            </div>
+            <div class="chart-card full-width">
+                <h3>Learning Rate</h3>
+                <div class="chart-container" id="lrChart"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let lastEpochCount = 0;
+
+        const statusLabels = {
+            idle: 'Sem treinamento ativo',
+            preparing: 'Preparando dados...',
+            training: 'Treinando...',
+            completed: 'Treinamento concluido'
+        };
+
+        function updateStatus(data) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            dot.className = 'status-dot ' + data.status;
+            text.textContent = statusLabels[data.status] || data.status;
+
+            if (data.currentEpoch) {
+                document.getElementById('epochInfo').textContent =
+                    data.currentEpoch + ' / ' + data.totalEpochs;
+            }
+            if (data.bestValAcc) {
+                document.getElementById('bestValAcc').textContent =
+                    (data.bestValAcc * 100).toFixed(2) + '%';
+            }
+            if (data.startedAt) {
+                document.getElementById('startTime').textContent =
+                    new Date(data.startedAt).toLocaleString('pt-BR');
+            }
+            if (data.topK) {
+                const card = document.getElementById('topkCard');
+                card.style.display = 'block';
+                document.getElementById('topk1').textContent = (data.topK.top1 * 100).toFixed(2) + '%';
+                document.getElementById('topk3').textContent = (data.topK.top3 * 100).toFixed(2) + '%';
+                document.getElementById('topk5').textContent = (data.topK.top5 * 100).toFixed(2) + '%';
+            }
+        }
+
+        function renderCharts(metrics) {
+            if (!metrics || metrics.length === 0) return;
+
+            // Loss chart
+            const lossData = {
+                values: [
+                    metrics.map(m => ({ x: m.epoch, y: m.loss })),
+                    metrics.map(m => ({ x: m.epoch, y: m.val_loss }))
+                ],
+                series: ['Treino', 'Validacao']
+            };
+            tfvis.render.linechart(document.getElementById('lossChart'), lossData, {
+                xLabel: 'Epoca',
+                yLabel: 'Loss',
+                height: 250,
+                zoomToFit: true
+            });
+
+            // Accuracy chart
+            const accData = {
+                values: [
+                    metrics.map(m => ({ x: m.epoch, y: m.acc * 100 })),
+                    metrics.map(m => ({ x: m.epoch, y: m.val_acc * 100 }))
+                ],
+                series: ['Treino', 'Validacao']
+            };
+            tfvis.render.linechart(document.getElementById('accChart'), accData, {
+                xLabel: 'Epoca',
+                yLabel: 'Accuracy (%)',
+                height: 250,
+                zoomToFit: true
+            });
+
+            // Learning rate chart
+            const lrData = {
+                values: [metrics.map(m => ({ x: m.epoch, y: m.lr }))],
+                series: ['Learning Rate']
+            };
+            tfvis.render.linechart(document.getElementById('lrChart'), lrData, {
+                xLabel: 'Epoca',
+                yLabel: 'LR',
+                height: 250,
+                zoomToFit: true
+            });
+        }
+
+        async function poll() {
+            try {
+                const res = await fetch('/api/training-metrics');
+                const data = await res.json();
+                updateStatus(data);
+
+                if (data.metrics && data.metrics.length > lastEpochCount) {
+                    lastEpochCount = data.metrics.length;
+                    renderCharts(data.metrics);
+                }
+            } catch (err) {
+                console.error('Erro ao buscar metricas:', err);
+            }
+        }
+
+        // Polling a cada 3 segundos
+        poll();
+        setInterval(poll, 3000);
+    </script>
+</body>
+</html>
