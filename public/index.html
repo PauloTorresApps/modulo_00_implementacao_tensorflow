@@ -125,6 +125,54 @@
             margin-bottom: 10px;
         }
         #resultados { display: none; }
+        #similares { display: none; }
+        #historicoCard { display: none; }
+        .similar-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background: #f3e5f5;
+            border-left: 4px solid #7b1fa2;
+        }
+        .similar-item .sim-info { flex: 1; }
+        .similar-item .sim-nome { font-weight: 600; font-size: 0.95rem; }
+        .similar-item .sim-detalhe { font-size: 0.8rem; color: #666; margin-top: 2px; }
+        .similar-item .sim-dist {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #7b1fa2;
+            min-width: 80px;
+            text-align: right;
+        }
+        .historico-item {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background: #e8eaf6;
+            border-left: 4px solid #3f51b5;
+        }
+        .historico-item .hist-nome { font-weight: 600; font-size: 0.95rem; }
+        .historico-item .hist-detalhe { font-size: 0.8rem; color: #666; margin-top: 2px; }
+        .historico-item .hist-central {
+            color: #e65100;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .btn-secondary {
+            padding: 10px 20px;
+            background: #455a64;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-bottom: 16px;
+        }
+        .btn-secondary:hover { opacity: 0.9; }
         .aviso-central {
             display: none;
             background: #fff3e0;
@@ -200,6 +248,23 @@
             <h2>Resultado da Classificacao</h2>
             <div id="listaResultados"></div>
         </div>
+
+        <div class="card" id="similares">
+            <h2>Processos Similares (Base de Treinamento)</h2>
+            <p style="font-size: 0.85rem; color: #666; margin-bottom: 14px;">
+                Processos do historico de treinamento com caracteristicas mais proximas,
+                identificados via busca vetorial no ChromaDB.
+            </p>
+            <div id="listaSimilares"></div>
+        </div>
+
+        <div class="card" id="historicoCard">
+            <h2>Historico de Classificacoes</h2>
+            <button class="btn-secondary" id="btnHistorico" onclick="carregarHistorico()">
+                Ver Historico Recente
+            </button>
+            <div id="listaHistorico"></div>
+        </div>
     </div>
 
     <script>
@@ -256,6 +321,7 @@
                 if (data.erro) {
                     document.getElementById('listaResultados').innerHTML =
                         `<div class="erro">${data.erro}</div>`;
+                    document.getElementById('similares').style.display = 'none';
                 } else {
                     // Verifica se a maior confiança é menor que 75%
                     const maiorConfianca = parseFloat(data.resultados[0].confianca);
@@ -274,9 +340,30 @@
                                 <div class="confianca">${r.confianca}</div>
                             </div>
                         `).join('');
+
+                    // Renderizar processos similares
+                    if (data.processos_similares && data.processos_similares.length > 0) {
+                        document.getElementById('listaSimilares').innerHTML =
+                            data.processos_similares.map(s => `
+                                <div class="similar-item">
+                                    <div class="sim-info">
+                                        <div class="sim-nome">${s.promotoria_name || 'ID ' + s.id_promotoria}</div>
+                                        <div class="sim-detalhe">
+                                            Comp: ${s.cod_competencia} | Assunto: ${s.id_assunto_principal} |
+                                            Local: ${s.id_localidade_judicial} | Orgao: ${s.id_orgao_juizo}
+                                        </div>
+                                    </div>
+                                    <div class="sim-dist">${s.distancia.toFixed(4)}</div>
+                                </div>
+                            `).join('');
+                        document.getElementById('similares').style.display = 'block';
+                    } else {
+                        document.getElementById('similares').style.display = 'none';
+                    }
                 }
 
                 document.getElementById('resultados').style.display = 'block';
+                document.getElementById('historicoCard').style.display = 'block';
             } catch (err) {
                 document.getElementById('listaResultados').innerHTML =
                     `<div class="erro">Erro ao conectar com o servidor.</div>`;
@@ -286,6 +373,38 @@
             btn.disabled = false;
             btn.textContent = 'Classificar Processo';
         });
+
+        async function carregarHistorico() {
+            const btn = document.getElementById('btnHistorico');
+            btn.disabled = true;
+            btn.textContent = 'Carregando...';
+            try {
+                const res = await fetch('/api/historico?limit=20');
+                const data = await res.json();
+                if (data.historico && data.historico.length > 0) {
+                    document.getElementById('listaHistorico').innerHTML =
+                        data.historico.map(h => `
+                            <div class="historico-item">
+                                <div class="hist-nome">${h.top1_name} (${h.top1_confidence.toFixed(2)}%)</div>
+                                <div class="hist-detalhe">
+                                    Comp: ${h.cod_competencia} | Assunto: ${h.id_assunto_principal} |
+                                    Local: ${h.id_localidade_judicial} | Orgao: ${h.id_orgao_juizo}
+                                </div>
+                                <div class="hist-detalhe">${new Date(h.timestamp).toLocaleString('pt-BR')}</div>
+                                ${h.sent_to_central ? '<div class="hist-central">[Encaminhado para Central]</div>' : ''}
+                            </div>
+                        `).join('');
+                } else {
+                    document.getElementById('listaHistorico').innerHTML =
+                        '<p style="color:#888;font-size:0.9rem;">Nenhuma classificacao registrada ainda.</p>';
+                }
+            } catch (err) {
+                document.getElementById('listaHistorico').innerHTML =
+                    '<div class="erro">ChromaDB indisponivel.</div>';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Ver Historico Recente';
+        }
 
         carregarOpcoes();
     </script>

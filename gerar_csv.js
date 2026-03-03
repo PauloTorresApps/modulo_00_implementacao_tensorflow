@@ -1,8 +1,8 @@
 import fs from 'fs';
 import readline from 'readline';
 
-const INPUT_FILE = 'treinamento_ia-2026-02-23_30k.csv';
-const OUTPUT_FILE = 'treinamento_ia_onehot.csv';
+const INPUT_FILE = process.env.INPUT_FILE || process.argv[2];
+const OUTPUT_FILE = process.env.ONEHOT_FILE || 'treinamento_ia_onehot.csv';
 
 // --- PASSO 1: Primeira leitura — descobrir valores únicos ---
 console.log(`Passo 1: Lendo ${INPUT_FILE} para descobrir valores únicos...`);

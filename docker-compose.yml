@@ -1,0 +1,34 @@
+services:
+  app:
+    build: .
+    container_name: classificador-promotorias
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8000
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  chromadb_data:

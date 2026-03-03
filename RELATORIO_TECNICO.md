@@ -257,9 +257,14 @@ O treinamento final convergiu na epoca 117, com early stopping ativado apos 25 e
 
 ```
 [Navegador] → [Express.js / Node.js] → [TensorFlow.js] → [Modelo Treinado]
-                      ↕
-              [promotorias.csv]
-              [colunas one-hot]
+                      ↕                       ↓
+              [promotorias.csv]        [Embedding Model]
+              [colunas one-hot]       (camada Dense3, 128-dim)
+                                            ↓
+                                       [ChromaDB]
+                                  ┌────────┼────────┐
+                          process_    classification_  training_
+                          embeddings  history          processes
 ```
 
 ### 7.2 Fluxo de Classificacao
@@ -268,7 +273,10 @@ O treinamento final convergiu na epoca 117, com early stopping ativado apos 25 e
 2. O frontend envia requisicao POST para a API
 3. O backend monta o vetor one-hot de 1.191 posicoes (colocando 1 nas posicoes correspondentes)
 4. O modelo executa a predicao via `model.predict()`
-5. As 5 promotorias com maior probabilidade sao retornadas com nome e percentual de confianca
+5. O sub-modelo de embeddings extrai o vetor de 128 dimensoes da camada `dense_Dense3`
+6. O embedding e armazenado no ChromaDB (collections `process_embeddings` e `classification_history`)
+7. O ChromaDB e consultado para recuperar os 5 processos de treinamento mais similares via busca vetorial
+8. As 5 promotorias com maior probabilidade sao retornadas com nome, percentual de confianca e processos similares
 
 ### 7.3 Regra de Negocio
 
@@ -279,47 +287,174 @@ Quando a maior probabilidade de classificacao e inferior a **75%**, o sistema ex
 | Metodo | Rota | Descricao |
 |---|---|---|
 | GET | `/api/opcoes` | Retorna valores validos para cada campo |
-| POST | `/api/classificar` | Classifica um processo e retorna Top-5 |
+| POST | `/api/classificar` | Classifica um processo, retorna Top-5 e processos similares |
+| POST | `/api/similares` | Busca N processos similares via embedding no ChromaDB |
+| GET | `/api/historico` | Retorna historico recente de classificacoes |
 
 ---
 
-## 8. Stack Tecnologico
+## 8. Armazenamento Vetorial com ChromaDB
+
+### 8.1 Conceito
+
+Alem da classificacao por rede neural, o sistema integra o **ChromaDB** — um banco de dados vetorial — para armazenar e consultar representacoes aprendidas (embeddings) dos processos. Isso habilita tres capacidades complementares a classificacao:
+
+1. **Busca por similaridade:** Encontrar processos com caracteristicas proximas usando distancia vetorial
+2. **Historico de classificacoes:** Registrar todas as classificacoes realizadas para auditoria e analise
+3. **Contexto para decisao (RAG):** Exibir processos similares do treinamento junto ao resultado, fornecendo contexto adicional ao analista
+
+### 8.2 Extracao de Embeddings
+
+A rede neural, ao aprender a classificar processos, desenvolve internamente representacoes compactas das caracteristicas de cada processo. A **camada Dense 3** (128 neuronios) funciona como um "resumo aprendido" — ela comprime as 1.191 features one-hot em um vetor denso de 128 dimensoes que captura as relacoes relevantes entre competencia, assunto, localidade e orgao.
+
+Para extrair esses embeddings sem retreinamento, um sub-modelo e criado a partir do modelo principal usando `tf.model()`, compartilhando os mesmos pesos:
+
+```
+Modelo Principal:    Entrada (1191) → Dense1 (512) → Dense2 (256) → Dense3 (128) → Saida (169)
+Sub-modelo Embedding: Entrada (1191) → Dense1 (512) → Dense2 (256) → Dense3 (128) ← SAIDA AQUI
+```
+
+O sub-modelo reutiliza os pesos ja treinados — nenhum treinamento adicional e necessario.
+
+### 8.3 Collections no ChromaDB
+
+O sistema utiliza tres collections independentes:
+
+| Collection | Finalidade | Chave | Conteudo |
+|---|---|---|---|
+| `process_embeddings` | Embeddings unicos por combinacao de features | Concatenacao dos 4 valores de entrada | Embedding 128-dim + metadata da classificacao |
+| `classification_history` | Log de todas as classificacoes | UUID unico por chamada | Embedding 128-dim + Top-5 resultados + timestamp |
+| `training_processes` | Embeddings dos dados de treinamento | Indice sequencial | Embedding 128-dim + promotoria real (ground truth) |
+
+- **`process_embeddings`** usa upsert: classificacoes repetidas para a mesma combinacao de features atualizam o registro existente
+- **`classification_history`** usa insert: cada classificacao gera um registro unico, permitindo rastrear o volume e padroes de uso
+- **`training_processes`** e populada uma unica vez (ou apos retreinamento) pelo script `populate-chromadb.js`
+
+### 8.4 Busca por Similaridade
+
+A busca vetorial no ChromaDB permite encontrar processos "proximos" no espaco de embeddings aprendido pela rede neural. Dois processos com embeddings proximos compartilham padroes semelhantes — mesmo que suas features brutas sejam diferentes.
+
+**Exemplo pratico:** Ao classificar um novo processo, o sistema consulta a collection `training_processes` e retorna os 5 processos de treinamento mais similares, exibindo a promotoria real de cada um. Isso da ao analista uma referencia concreta: "processos parecidos com este foram historicamente distribuidos para estas promotorias".
+
+### 8.5 Degradacao Graceful
+
+A integracao com o ChromaDB foi projetada para nao comprometer a funcionalidade principal. Se o ChromaDB estiver indisponivel:
+
+- A classificacao por rede neural continua funcionando normalmente
+- Os endpoints de similaridade e historico retornam erro 503 (Service Unavailable)
+- O frontend oculta as secoes de processos similares e historico
+- Nenhum erro e propagado para o usuario na interface de classificacao
+
+### 8.6 Populacao Inicial e Retreinamento
+
+O script `populate-chromadb.js` processa o dataset de treinamento em batches de 256 registros:
+
+1. Le o CSV de treinamento linha a linha (streaming)
+2. Constroi o vetor one-hot para cada registro
+3. Executa o sub-modelo de embeddings em batch para obter vetores 128-dim
+4. Insere os embeddings no ChromaDB com metadata (features + promotoria real)
+
+**Importante:** Apos cada retreinamento do modelo, os embeddings armazenados tornam-se obsoletos (a representacao aprendida muda). E necessario re-executar `populate-chromadb.js` para atualizar a collection `training_processes`.
+
+---
+
+## 9. Stack Tecnologico
 
 | Componente | Tecnologia | Versao |
 |---|---|---|
-| Runtime | Node.js | - |
+| Runtime | Node.js | 22 |
 | Machine Learning | TensorFlow.js (Node) | 4.22.0 |
+| Banco de Dados Vetorial | ChromaDB + chromadb (npm) | 3.3.1 |
 | Servidor Web | Express.js | 5.2.1 |
 | Parsing CSV | csv-parse | 6.1.0 |
 | Frontend | HTML/CSS/JavaScript | Vanilla |
+| Containerizacao | Docker + Docker Compose | - |
 
 ---
 
-## 9. Consideracoes e Proximos Passos
+## 10. Containerizacao com Docker
 
-### 9.1 Pontos Fortes
+### 10.1 Visao Geral
+
+O sistema utiliza **Docker Compose** para orquestrar dois containers em uma unica operacao:
+
+```text
+docker-compose.yml
+├── app (classificador-promotorias)
+│   ├── Node.js 22 + TensorFlow.js
+│   ├── Modelo treinado (modelo_promotoria/)
+│   ├── Express.js (porta 3000)
+│   └── Cliente ChromaDB
+└── chromadb
+    ├── ChromaDB Server (porta 8000)
+    └── Volume persistente (chromadb_data)
+```
+
+### 10.2 Dockerfile
+
+A imagem da aplicacao utiliza build **multi-stage** para otimizar o tamanho final:
+
+1. **Estagio build:** Instala dependencias com `npm ci --omit=dev` (apenas producao)
+2. **Estagio producao:** Copia `node_modules` ja resolvidos, codigo-fonte, modelo treinado e dados essenciais (`promotorias.csv`, `treinamento_ia_onehot.csv`)
+
+A imagem base `node:22-slim` minimiza o tamanho do container mantendo compatibilidade com o TensorFlow.js.
+
+### 10.3 Orquestracao
+
+O `docker-compose.yml` define:
+
+- **Dependencia com healthcheck:** O container `app` so inicia apos o ChromaDB responder ao endpoint `/api/v2/heartbeat`, garantindo que a conexao esteja disponivel na inicializacao
+- **Volume persistente:** Os dados do ChromaDB sao armazenados no volume `chromadb_data`, preservados entre reinicializacoes e atualizacoes dos containers
+- **Restart automatico:** Ambos os containers reiniciam automaticamente em caso de falha (`unless-stopped`)
+- **Variaveis de ambiente:** Host e porta do ChromaDB sao configurados via environment, permitindo flexibilidade na implantacao
+
+### 10.4 Operacao
+
+| Comando | Descricao |
+|---|---|
+| `npm run docker:up` | Constroi imagens e inicia app + ChromaDB |
+| `npm run docker:down` | Para e remove os containers |
+| `npm run docker:logs` | Acompanha logs de ambos os containers |
+| `npm run docker:populate` | Popula ChromaDB com embeddings do treinamento (dentro do container) |
+
+A portabilidade e garantida: qualquer maquina com Docker instalado pode executar o sistema completo com um unico comando (`npm run docker:up`), sem necessidade de instalar Node.js, TensorFlow ou ChromaDB localmente.
+
+---
+
+## 11. Consideracoes e Proximos Passos
+
+### 11.1 Pontos Fortes
 
 - **Top-5 de 96%:** Em quase todos os casos, a promotoria correta esta entre as 5 sugestoes
 - **Baixo overfitting:** Gap de apenas 0.4% entre treino e validacao
 - **Escalavel:** A arquitetura suporta adicao de novas promotorias e features
 - **Leve:** O modelo tem apenas ~3MB, executa em milissegundos
+- **Busca vetorial:** Integracao com ChromaDB permite localizar processos similares via embeddings aprendidos, fornecendo contexto adicional ao analista
+- **Rastreabilidade:** Todas as classificacoes sao registradas no ChromaDB com metadata completa, permitindo auditoria e analise de padroes de uso
+- **Resiliencia:** O sistema opera normalmente mesmo sem o ChromaDB, com degradacao graceful das funcionalidades vetoriais
+- **Portabilidade:** Containerizacao com Docker Compose permite implantar o sistema completo (app + ChromaDB) em qualquer maquina com um unico comando
 
-### 9.2 Limitacoes
+### 11.2 Limitacoes
 
 - **Sobreposicao de atribuicoes:** Varias promotorias atendem os mesmos tipos de processo, e a distribuicao real depende de criterios nao presentes nos dados (rodizio, carga de trabalho). Isso impoe um teto teorico de ~81% com as 4 features atuais
 - **Features limitadas:** O modelo depende de apenas 4 features categoricas. Mais informacoes do processo (tipo, vara, texto do assunto) poderiam reduzir a ambiguidade e elevar a acuracia alem do teto atual
 
-### 9.3 Oportunidades de Melhoria
+### 11.3 Oportunidades de Melhoria
 
 1. **Features adicionais:** Incorporar informacoes como tipo de processo, vara de origem, ou texto do assunto — a principal alavanca para superar o teto atual de acuracia, reduzindo a ambiguidade entre promotorias com atribuicoes sobrepostas
-2. **Retreinamento periodico:** Atualizar o modelo com novos processos distribuidos para manter a precisao ao longo do tempo
-3. **Monitoramento em producao:** Registrar as classificacoes e feedback dos analistas para medir a precisao real em uso
+2. **Retreinamento periodico:** Atualizar o modelo com novos processos distribuidos para manter a precisao ao longo do tempo. Apos cada retreinamento, re-executar `populate-chromadb.js` para atualizar os embeddings armazenados
+3. **Monitoramento em producao:** O historico de classificacoes no ChromaDB ja permite analise de padroes de uso. O proximo passo e integrar feedback dos analistas (confirmacao ou correcao da promotoria sugerida) para medir a precisao real em uso
 4. **Dados de distribuicao:** Incluir informacoes sobre criterios de distribuicao (rodizio, carga) poderia resolver conflitos entre promotorias concorrentes
+5. **Analise de clusters:** Utilizar os embeddings armazenados no ChromaDB para identificar agrupamentos naturais de processos e detectar padroes de distribuicao nao evidentes nas features brutas
 
 ---
 
-## 10. Conclusao
+## 12. Conclusao
 
 O sistema desenvolvido demonstra viabilidade tecnica para automatizar a distribuicao de processos para promotorias de justica. Com **77.77% de acerto direto** (Top-1), **93.14% considerando as 3 primeiras sugestoes** (Top-3) e **95.84% considerando as 5 primeiras** (Top-5), o modelo oferece ganho significativo de eficiencia, mantendo a seguranca de encaminhar casos incertos para avaliacao humana.
 
 A analise diagnostica revelou que a sobreposicao natural de atribuicoes entre promotorias impoe um teto teorico de **81.21%** com as 4 features atuais — o que torna o resultado de 77.77% expressivo, atingindo **95.8% do maximo possivel**. O modelo extraiu quase toda a informacao discriminante disponivel nas variaveis de entrada. A incorporacao de features adicionais (tipo de processo, vara, texto do assunto) e o principal caminho para evolucao futura do sistema, permitindo ultrapassar o teto atual.
+
+A integracao com o **ChromaDB** adiciona uma camada de armazenamento vetorial que complementa a classificacao: embeddings de 128 dimensoes extraidos da penultima camada da rede neural permitem busca por similaridade entre processos, registro completo do historico de classificacoes e recuperacao de processos de treinamento com caracteristicas proximas (RAG). Essas funcionalidades fornecem contexto adicional ao analista e estabelecem a base para monitoramento continuo e evolucao do sistema.
+
+A containerizacao com **Docker Compose** garante portabilidade e facilidade de implantacao: o sistema completo (aplicacao + banco vetorial) pode ser iniciado em qualquer ambiente com um unico comando, sem dependencias de instalacao local.

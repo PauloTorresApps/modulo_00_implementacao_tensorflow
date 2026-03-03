@@ -1,0 +1,9 @@
+node_modules/
+.claude/
+.git/
+*.md
+treinamento_ia-2026-02-23_*.csv
+treinamento_ia_202602231644.csv
+treinamento_ia_202602240943.csv
+treinamento_ia-2026-02-24_39k.csv
+treinamento_ia_normalizado.csv

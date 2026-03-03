@@ -4,8 +4,15 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node --max-old-space-size=8192 train.js"
+    "start": "node server.js",
+    "train": "node --max-old-space-size=8192 train.js",
+    "populate": "node --env-file=.env populate-chromadb.js",
+    "diagnostico": "node diagnostico.js",
+    "gerar-csv": "node --env-file=.env gerar_csv.js",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:populate": "docker compose exec app node populate-chromadb.js"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +20,7 @@
   "description": "",
   "dependencies": {
     "@tensorflow/tfjs-node": "^4.22.0",
+    "chromadb": "^3.3.1",
     "csv-parse": "^6.1.0",
     "express": "^5.2.1"
   }
